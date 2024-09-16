@@ -1,0 +1,174 @@
+0 a)sys161: System/161 release 2.0.3, compiled Sep 17 2022 09:27:01
+
+OS/161 base system version 1.99.08
+Copyright (c) 2000, 2001-2005, 2008-2011, 2013, 2014
+   President and Fellows of Harvard College.  All rights reserved.
+
+Put-your-group-name-here's system version 0 (DUMBVM #1)
+
+292k physical memory available
+Device probe...
+lamebus0 (system main bus)
+emu0 at lamebus0
+ltrace0 at lamebus0
+ltimer0 at lamebus0
+beep0 at ltimer0
+rtclock0 at ltimer0
+lrandom0 at lamebus0
+random0 at lrandom0
+lhd0 at lamebus0
+lhd1 at lamebus0
+lser0 at lamebus0
+con0 at lser0
+
+cpu0: MIPS/161 (System/161 2.x) features 0x0
+OS/161 kernel [? for menu]:
+
+0 b) commit 82a947a6a8c7ff838dc5aa7f393dbfcd07dab2ee (HEAD -> master, tag: asst1-start, origin/master, origin/HEAD)
+Author: Nimesh Pandey <nimeshpnd14@gmail.com>
+Date:   Mon Sep 9 14:21:18 2024 -0700
+
+    Initial commit
+
+1) The first line that runs when a trap occurs is line 125 in trap.c located in /kern/arch/mips/locore and the control is transferred
+   to the kernel space. An interrupt is similar and has basically all the same handling mechanisms but is caused when a hardware device
+   tells the os to stop what it is doing and execute the interrupt routine, it is also first handled by the general trap handler, which routes 
+   it to another function specifically for interrupts.
+
+2)The file in question is /userland/lib/libc/arch/mips/syscalls-mips.S, this is an assembly file for mips architecture and on line 84 is the
+  "syscall" assembly instruction that routes to the exception handler which further invokes the general trap handler.
+
+3) This is done to separate user-space and kernel-space, the libc functions in "common" can be safely used by both kernel and user space processes
+   whereas in userland the libc functions are solely for user programs which need to make system calls.
+
+4)It configure the platform: sys161 and machine: mips .We might wanna rerun configure if we change the host Operating System
+ 
+5)Some details that might make a function "machine" dependent are , requiring certain low level code for a certain ISA or 
+  requiring to store register states amongst many others. It is important to separate because it improves code readability,
+  makes it easier to debug , provides modularity and also makes it possible to make hardware specific optimizations.
+
+6)A trapframe is 37 words in size, because it stores 37 register values.
+
+7)We will need to rerun if we a) makes changes to the config script b)if we make changes to source code by adding or removing files
+  from the kernel directory we need config script to ensure that build uses the right dependencies c) if we have errors during 
+  the build process we can use config to regenerate build configurations and then build again.
+
+8)We run bmake depend after running config and adding or removing source files to update the build dependencies before compilation.
+
+9)We run bmake to compile the kernel after updating dependencies and we run bmake install to install the newly compiled kernel at
+  the root directory where we can run it .
+
+10)We will have to make changes inside kern/main/menu.c, on line 530 is "cmdtable[] " we add a command "hello" under "operation" and also inside "opsmenu[]" on line 434, the "cmdtable]" command calls function "cmd_hello" located somewhere in menu.c which will kprintf "Hello world". 
+
+11)OS161 is an software built for a educational use and runs on an emulator on top of the host machine, which may have a separate architecture 
+   hence requiring those utilities made specifically for it, also because our machine has standard utilities which might be too advanced and even
+   out of scope for the educational OS and hence we can't really use those.
+
+12)The program's return value is stored in the process structure, passed to the parent upon request, and retained until the parent process collects it, after which the system cleans up the process.
+
+13)To add a new system call in OS161, we declare the system call in kern/includ/syscall.h, implement it in kern/syscall/newsyscall.c, and add it to the syscall dispatcher kern/syscall.c ,assign a syscall number in kern/syscall.h . Create an assembly stub in syscalls-mips.S and a user-space wrapper in unistd.h . We then run bmake depend , bmake and bmake install to complete recompiling our kernel.
+
+14) the very first function that executes is __start()
+
+15) the first assembly instruction is "addiu sp,sp, -24"
+
+16)
+Num     Type           Disp Enb Address    What
+1       breakpoint     keep y   0x800139e4 in kmain at ../../main/main.c:211
+2       breakpoint     keep y   0x80014a0c in menu at ../../main/menu.c:697
+
+17) The assemby code sets up the stack, copies the boot string, prepares exception handlers, and configures the processor's status and context registers. 
+    It allocates memory for the kernel stack, resets the TLB, and transitions control to the kmain() function to start kernel execution.
+
+18) jal kmain is the assembly code that calls the kernel main function
+
+
+19)boot () at ../../main/main.c:99
+99              kprintf("\n");
+(gdb)
+kprintf (fmt=0x8002fb0c "\n") at ../../lib/kprintf.c:101
+101             dolock = kprintf_lock != NULL
+(gdb)
+104                     && curcpu->c_spinlocks == 0;
+(gdb)
+101             dolock = kprintf_lock != NULL
+(gdb)
+106             if (dolock) {
+(gdb) s
+110                     spinlock_acquire(&kprintf_spinlock);
+(gdb)
+spinlock_acquire (splk=0x80034124 <kprintf_spinlock>) at ../../thread/spinlock.c:79
+79              splraise(IPL_NONE, IPL_HIGH);
+(gdb)
+splraise (oldspl=0, newspl=1) at ../../thread/spl.c:89
+89              struct thread *cur = curthread;
+(gdb)
+92              KASSERT(oldspl == IPL_NONE);
+(gdb)
+93              KASSERT(newspl == IPL_HIGH);
+(gdb)
+95              if (!CURCPU_EXISTS()) {
+(gdb)
+97                      return;
+(gdb)
+104     }
+(gdb)
+spinlock_acquire (splk=0x80034124 <kprintf_spinlock>) at ../../thread/spinlock.c:82
+82              if (CURCPU_EXISTS()) {
+(gdb)
+90                      mycpu = NULL;
+(gdb)
+104                     if (spinlock_data_get(&splk->splk_lock) != 0) {
+(gdb)
+spinlock_data_get (sd=0x80034124 <kprintf_spinlock>) at includelinks/machine/spinlock.h:63
+63              return *sd;
+(gdb)
+64      }
+(gdb)
+spinlock_acquire (splk=0x80034124 <kprintf_spinlock>) at ../../thread/spinlock.c:107
+107                     if (spinlock_data_testandset(&splk->splk_lock) != 0) {
+(gdb)
+spinlock_data_testandset (sd=0x80034124 <kprintf_spinlock>) at includelinks/machine/spinlock.h:84
+84              y = 1;
+(gdb)
+85              __asm volatile(
+(gdb)
+93              if (y == 0) {
+(gdb)
+96              return x;
+(gdb)
+97      }
+(gdb)
+spinlock_acquire (splk=0x80034124 <kprintf_spinlock>) at ../../thread/spinlock.c:110
+110                     break;
+(gdb)
+113             membar_store_any();
+(gdb)
+membar_store_any () at includelinks/machine/membar.h:59
+59      MEMBAR_INLINE void membar_store_any(void) { membar_any_any(); }
+(gdb)
+membar_any_any () at includelinks/machine/membar.h:47
+47              __asm volatile(
+(gdb)
+55      }
+(gdb)
+spinlock_acquire (splk=0x80034124 <kprintf_spinlock>) at ../../thread/spinlock.c:114
+114             splk->splk_holder = mycpu;
+(gdb)
+
+115     }
+
+
+
+20) (gdb) print bootcpu
+$1 = (struct cpu *) 0x80000
+
+21) print bootcpu
+$5 = (struct cpu *) 0x8003af00
+
+22)(gdb) array allcpus
+0 items
+
+23) (gdb) array allcpus
+1 items
+$1 = (void *) 0x8003af00
