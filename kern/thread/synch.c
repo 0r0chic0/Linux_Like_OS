@@ -235,7 +235,7 @@ lock_do_i_hold(struct lock *lock)
 
     spinlock_acquire(&lock->lk_spinlock); 
     
-    if(lock->lk_lock == true && lock->lk_holder == curthread) {
+    if(lock->lk_lock == 1 && lock->lk_holder == curthread) {
 		result = true;
 	} else {
 		result = false;
