@@ -1,4 +1,65 @@
-1)
-2)
-3)
-4)
+1) When a thread exiits by calling thread_exit method, it is first separated fromt the process , we then turn off the interrupts
+   and perform thread_switch(S_ZOMBIE,NULL,NULL) , where it gets the S_ZOMBIE state and is added to curcpu->c_zombies using
+   threadlist_addtail method, we then move on to the next ready thread and run it and also exorcise() the zombie threads towards the
+   end of thread_switch method. 
+   When a thread "sleeps" it is essentially added to wc->wc_threads with S_SLEEP state value and stays in the state until wchan_wakeone
+   or wchan_wakeall method is invoked and these threads become runnable or S_READY.
+
+2) the thread_switch method on line 560 in thread.c is used for context switching, specifically the switchfram_switch
+   method in assembler switch.S which actually switches the thread, whereast thread_switch method preps the current thread
+   for an impending switch.
+
+3) A thread can be in one of 4 possible states , running : S_RUN, ready to run : S_READY, sleeping : S_SLEEP, exited but not
+   deleted : S_ZOMBIE.
+
+4) Turning the interrups makes sure that the flow of the program is not interrupted by cpu interrupts (for that particular processor),
+   we can do this by using the splhigh() method, it is important to turn off interrupts because we do not want a context switch to happen
+   in the middle of a critical operation, more importantly we do not want the same cpu thread to try and acquire or relase its own lock again
+   which would cause a deadlock situation.
+
+5) A thread wakes up another thread by calling make_thread_runnable which adds the target thread into a cpu's c_runqueue field after setting its
+   state to S_READY. a sleeping thread can be "woken up" using wchan_wakeone or wchan_wakeall which use the make_thread_runnable method to 
+   change the state of sleeping threads in wc_threads by changing their state to S_READY and putting them in the c_runqueue field.
+
+6) We use the thread_yield method to run the next runnable thread in c_runqueue, this method calls thread_switch(S_READY,NULL,NULL), which maintains
+   eventually class make_thread_runnable method where this thread is put into the c_runqueue using threadlist_addtail,we then return to the
+   thread_switch method where we continue and reach the part of the code where we run a while loop to check if there is S_READY thread at 
+   the head of c_runqueue after which we context switch using switchfram_switch,after which we set the thread state to S_RUN, and this is the entire 
+   process of running the next thread in line.
+
+7) It picks the next thread using these lines of code :
+   curcpu->c_isidle = true;
+	do {
+		next = threadlist_remhead(&curcpu->c_runqueue);
+		if (next == NULL) {
+			spinlock_release(&curcpu->c_runqueue_lock);
+			cpu_idle();
+			spinlock_acquire(&curcpu->c_runqueue_lock);
+		}
+	} while (next == NULL);
+	curcpu->c_isidle = false;
+	curcpu->c_curthread = next;
+	curthread = next;
+    
+    this block of code is situated between lines 640-659 in thread.c_curthread
+
+8) When hardclock() method is called (by mainbus_interrupt(struct trapframe *tf) inside lamebus_machdep.c) we increment curcpu->c_hardclocks, 
+   and then use this block of code (inside clock.c under hardclock method) for scheduling :
+  
+   if ((curcpu->c_hardclocks % SCHEDULE_HARDCLOCKS) == 0) {
+		schedule();}
+   
+   As mentioned above hardclock method is called when a timer interrupt happens.
+
+9) wchan_sleep is used inside the P method of semaphores to block the thread trying to access the semaphore by putting it to sleep 
+   inside a wchan channel instead of making it spin which is a very cpu intensive process if the critical section of a program is 
+   long.
+   wchan_wakeone is used inside the V method of semaphore to wakeup the thread that was put to sleep inside the wchannel due to
+   lock contention so that it can try to acquire the semaphore.
+
+10) wchan_sleep() firstly does not allow operation during an interrupt, after that it acquires a spinlock , thereby isolating the 
+    section where the thread is put to sleep from being overwritten by other threads, and only when inside thread_switch when the 
+    thread is added to wc->wc_threads is the lock released thereby ensuring that no thread can attempt to awaken a thread in the process
+    of going to sleep and ensuring that the a sleep instruction indeed puts the thread to sleep and to add to that wchan is also used
+    with locks such as in semaphores which protect waitchannel by enclosing them inside its critical section.
+    
