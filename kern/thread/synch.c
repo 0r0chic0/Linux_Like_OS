@@ -141,6 +141,7 @@ V(struct semaphore *sem)
 struct lock *
 lock_create(const char *name)
 {
+<<<<<<< HEAD
     struct lock *lock;
 
     lock = kmalloc(sizeof(struct lock));
@@ -173,13 +174,39 @@ lock_create(const char *name)
 }
 
 
+=======
+        struct lock *lock;
+
+        lock = kmalloc(sizeof(struct lock));
+        if (lock == NULL) {
+                return NULL;
+        }
+
+        lock->lk_name = kstrdup(name);
+        if (lock->lk_name == NULL) {
+                kfree(lock);
+                return NULL;
+        }
+
+        // add stuff here as needed
+
+        return lock;
+}
+
+>>>>>>> instructor/synchprobs
 void
 lock_destroy(struct lock *lock)
 {
         KASSERT(lock != NULL);
+<<<<<<< HEAD
         
         spinlock_cleanup(&lock->lk_spinlock);
 	wchan_destroy(lock->lk_wchan);
+=======
+
+        // add stuff here as needed
+
+>>>>>>> instructor/synchprobs
         kfree(lock->lk_name);
         kfree(lock);
 }
@@ -187,6 +214,7 @@ lock_destroy(struct lock *lock)
 void
 lock_acquire(struct lock *lock)
 {
+<<<<<<< HEAD
     KASSERT(lock != NULL); // Ensure lock is not NULL
 
     // Acquire the spinlock to ensure atomic access to the lock state
@@ -205,11 +233,17 @@ lock_acquire(struct lock *lock)
 
     // Release the spinlock
     spinlock_release(&lock->lk_spinlock);
+=======
+        // Write this
+
+        (void)lock;  // suppress warning until code gets written
+>>>>>>> instructor/synchprobs
 }
 
 void
 lock_release(struct lock *lock)
 {
+<<<<<<< HEAD
     KASSERT(lock != NULL); // Ensure lock is not NULL
     KASSERT(lock->lk_lock == 1 ); // Ensure lock is held
     KASSERT(lock->lk_holder == curthread); // Ensure thread value matches
@@ -224,11 +258,17 @@ lock_release(struct lock *lock)
     // Release the spinlock
     spinlock_release(&lock->lk_spinlock);
        
+=======
+        // Write this
+
+        (void)lock;  // suppress warning until code gets written
+>>>>>>> instructor/synchprobs
 }
 
 bool
 lock_do_i_hold(struct lock *lock)
 {
+<<<<<<< HEAD
     KASSERT(lock != NULL);  // Ensure lock is not NULL
     
     bool result = false;
@@ -279,13 +319,52 @@ cv_create(const char *name)
 }
 
 
+=======
+        // Write this
+
+        (void)lock;  // suppress warning until code gets written
+
+        return true; // dummy until code gets written
+}
+
+////////////////////////////////////////////////////////////
+//
+// CV
+
+
+struct cv *
+cv_create(const char *name)
+{
+        struct cv *cv;
+
+        cv = kmalloc(sizeof(struct cv));
+        if (cv == NULL) {
+                return NULL;
+        }
+
+        cv->cv_name = kstrdup(name);
+        if (cv->cv_name==NULL) {
+                kfree(cv);
+                return NULL;
+        }
+
+        // add stuff here as needed
+
+        return cv;
+}
+
+>>>>>>> instructor/synchprobs
 void
 cv_destroy(struct cv *cv)
 {
         KASSERT(cv != NULL);
 
+<<<<<<< HEAD
         spinlock_cleanup(&cv->cv_spinlock);
 	wchan_destroy(cv->cv_wchan);
+=======
+        // add stuff here as needed
+>>>>>>> instructor/synchprobs
 
         kfree(cv->cv_name);
         kfree(cv);
@@ -294,6 +373,7 @@ cv_destroy(struct cv *cv)
 void
 cv_wait(struct cv *cv, struct lock *lock)
 {
+<<<<<<< HEAD
     KASSERT(cv != NULL); // Ensure condition variable is not NULL
     KASSERT(lock != NULL); // Ensure lock is not NULL
     KASSERT(lock_do_i_hold(lock)); // Ensure the current thread holds the lock
@@ -310,11 +390,17 @@ cv_wait(struct cv *cv, struct lock *lock)
 
     // Reacquire the lock after waking up
     lock_acquire(lock);
+=======
+        // Write this
+        (void)cv;    // suppress warning until code gets written
+        (void)lock;  // suppress warning until code gets written
+>>>>>>> instructor/synchprobs
 }
 
 void
 cv_signal(struct cv *cv, struct lock *lock)
 {
+<<<<<<< HEAD
     KASSERT(cv != NULL); // Ensure condition variable is not NULL
 
     KASSERT(lock_do_i_hold(lock) == true);
@@ -344,4 +430,17 @@ cv_broadcast(struct cv *cv,struct lock *lock)
 
     // Release the spinlock
     spinlock_release(&cv->cv_spinlock);
+=======
+        // Write this
+	(void)cv;    // suppress warning until code gets written
+	(void)lock;  // suppress warning until code gets written
+}
+
+void
+cv_broadcast(struct cv *cv, struct lock *lock)
+{
+	// Write this
+	(void)cv;    // suppress warning until code gets written
+	(void)lock;  // suppress warning until code gets written
+>>>>>>> instructor/synchprobs
 }

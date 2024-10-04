@@ -36,6 +36,11 @@
 
 #include <kern/time.h>
 
+<<<<<<< HEAD
+=======
+#include "opt-synchprobs.h"
+
+>>>>>>> instructor/synchprobs
 
 /*
  * hardclock() is called on every CPU HZ times a second, possibly only
@@ -43,7 +48,17 @@
  */
 
 /* hardclocks per second */
+<<<<<<< HEAD
 #define HZ  100
+=======
+#if OPT_SYNCHPROBS
+/* Make synchronization more exciting :) */
+#define HZ  10000
+#else
+/* More realistic value */
+#define HZ  100
+#endif
+>>>>>>> instructor/synchprobs
 
 void hardclock_bootstrap(void);
 void hardclock(void);
