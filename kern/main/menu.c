@@ -41,10 +41,7 @@
 #include <sfs.h>
 #include <syscall.h>
 #include <test.h>
-<<<<<<< HEAD
-=======
 #include "opt-synchprobs.h"
->>>>>>> instructor/synchprobs
 #include "opt-sfs.h"
 #include "opt-net.h"
 
@@ -119,14 +116,11 @@ common_prog(int nargs, char **args)
 	struct proc *proc;
 	int result;
 
-<<<<<<< HEAD
-=======
 #if OPT_SYNCHPROBS
 	kprintf("Warning: this probably won't work with a "
 		"synchronization-problems kernel.\n");
 #endif
 
->>>>>>> instructor/synchprobs
 	/* Create a process for the new program to run in. */
 	proc = proc_create_runprogram(args[0] /* name */);
 	if (proc == NULL) {
@@ -514,12 +508,9 @@ cmd_testmenu(int n, char **a)
 static const char *mainmenu[] = {
 	"[?o] Operations menu                ",
 	"[?t] Tests menu                     ",
-<<<<<<< HEAD
-=======
 #if OPT_SYNCHPROBS
 	"[sp1] Air Balloon                   ",
 #endif
->>>>>>> instructor/synchprobs
 	"[kh] Kernel heap stats              ",
 	"[khgen] Next kernel heap generation ",
 	"[khdump] Dump kernel heap           ",
@@ -568,14 +559,11 @@ static struct {
 	{ "exit",	cmd_quit },
 	{ "halt",	cmd_quit },
 
-<<<<<<< HEAD
-=======
 #if OPT_SYNCHPROBS
 	/* in-kernel synchronization problem(s) */
 	{ "sp1",	airballoon },
 #endif
 
->>>>>>> instructor/synchprobs
 	/* stats */
 	{ "kh",         cmd_kheapstats },
 	{ "khgen",      cmd_kheapgeneration },
