@@ -1,9 +1,3 @@
-$(MYBUILDDIR)/mksfs.ho: \
- mksfs.c \
- support.h \
- $(INSTALLTOP)/hostinclude/kern/sfs.h \
- $(INSTALLTOP)/hostinclude/hostcompat.h \
- disk.h
 $(MYBUILDDIR)/disk.ho: \
  disk.c \
  support.h \

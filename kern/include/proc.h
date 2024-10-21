@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013
- *	The President and Fellows of Harvard College.
+ *  The President and Fellows of Harvard College.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,28 +35,29 @@
  *
  * Note: curproc is defined by <current.h>.
  */
-
+#include <limits.h>
+#include <file_handler.h>
 #include <spinlock.h>
 #include <thread.h> /* required for struct threadarray */
-
-struct addrspace;
-struct vnode;
-
 /*
  * Process structure.
  */
+
+struct vnode;
+struct addrspace;
+
 struct proc {
-	char *p_name;			/* Name of this process */
-	struct spinlock p_lock;		/* Lock for this structure */
-	struct threadarray p_threads;	/* Threads in this process */
+    char *p_name;                  /* Name of this process */
+    struct spinlock p_lock;        /* Lock for this structure */
+    struct threadarray p_threads;  /* Threads in this process */
 
-	/* VM */
-	struct addrspace *p_addrspace;	/* virtual address space */
+    /* VM */
+    struct addrspace *p_addrspace; /* Virtual address space */
 
-	/* VFS */
-	struct vnode *p_cwd;		/* current working directory */
+    /* VFS */
+    struct vnode *p_cwd;           /* Current working directory */
 
-	/* add more material here as needed */
+    struct file_handler *file_table[OPEN_MAX]; /* File table */
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -81,7 +82,6 @@ void proc_remthread(struct thread *t);
 struct addrspace *proc_getas(void);
 
 /* Change the address space of the current process, and return the old one. */
-struct addrspace *proc_setas(struct addrspace *);
-
+struct addrspace *proc_setas(struct addrspace *newas);
 
 #endif /* _PROC_H_ */
