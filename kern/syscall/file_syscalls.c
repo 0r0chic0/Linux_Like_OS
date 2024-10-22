@@ -17,26 +17,30 @@
 #include <file_handler.h>
 #include <filesyscalls.h>
 
-
+// Open a file with specified filename and flags, and return a file descriptor.
 int sys_open(const char *filename, int flags, int32_t *retval) {
     char cin_filename[PATH_MAX];
+    // Copy the filename from user space to kernel space.
     int err = copyinstr((const_userptr_t)filename, cin_filename, PATH_MAX, NULL);
     if (err) return err;
 
+    // Find an available file descriptor slot.
     int i = 3;
     while (i < OPEN_MAX && curproc->file_table[i] != NULL) i++;
-    if (i == OPEN_MAX) return EMFILE;
+    if (i == OPEN_MAX) return EMFILE; // No available file descriptors.
 
+    // Allocate and initialize a file handler.
     struct file_handler *fh = (struct file_handler *)kmalloc(sizeof(struct file_handler));
     if (!fh) return ENOMEM;
 
+    // Open the file using the VFS layer.
     err = vfs_open(cin_filename, flags, 0, &fh->vnode);
     if (err) {
         kfree(fh);
         return err;
     }
 
-    // Set the offset based on O_APPEND or start at 0.
+    // Set the offset to the end if O_APPEND is set; otherwise, start at 0.
     if (flags & O_APPEND) {
         struct stat statbuf;
         err = VOP_STAT(fh->vnode, &statbuf);
@@ -50,6 +54,7 @@ int sys_open(const char *filename, int flags, int32_t *retval) {
         fh->offset = 0;
     }
 
+    // Set other fields for the file handler.
     fh->d_count = 1;
     fh->config = false;
     fh->mode = flags & O_ACCMODE;
@@ -60,52 +65,66 @@ int sys_open(const char *filename, int flags, int32_t *retval) {
         return ENOMEM;
     }
 
+    // Store the file handler in the process's file table.
     curproc->file_table[i] = fh;
-    *retval = i;
+    *retval = i; // Return the new file descriptor.
     return 0;
 }
 
-int sys_read(int fd, void *buf, size_t bufflen, int32_t *retval){
-    if(fd < 0 || fd >= OPEN_MAX || curproc->file_table[fd] == NULL || curproc->file_table[fd]->mode == O_WRONLY) {
-		return EBADF;		
-	}
-	char *kbuf = (char *)kmalloc(sizeof(*buf)*bufflen);
-    struct file_handler *fh = curproc->file_table[fd];
-	struct iovec iov;
-	struct uio kuio;
-	lock_acquire(fh->lock);	
-	uio_kinit(&iov, &kuio, kbuf, bufflen, fh->offset, UIO_READ);
+// Read data from an open file descriptor into a user-provided buffer.
+int sys_read(int fd, void *buf, size_t bufflen, int32_t *retval) {
+    if (fd < 0 || fd >= OPEN_MAX || curproc->file_table[fd] == NULL || curproc->file_table[fd]->mode == O_WRONLY) {
+        return EBADF; // Invalid file descriptor or write-only file.
+    }
 
-	int err = VOP_READ(fh->vnode, &kuio);
-	if (err){
-		lock_release(fh->lock);
-		kfree(kbuf);
-		return err;
-	}
-	off_t bytes = kuio.uio_offset - fh->offset;
-	*retval = (int32_t)bytes;
-	fh->offset = kuio.uio_offset;
-	if(bytes != 0){
-		err = copyout(kbuf, (userptr_t)buf, *retval);
-		if(err) {
-			lock_release(fh->lock);
-			kfree(kbuf);
-			return err;
-		}
-	}
-	lock_release(fh->lock);
-	kfree(kbuf);
-	return 0;
+    // Allocate a kernel buffer to store the read data.
+    char *kbuf = (char *)kmalloc(sizeof(*buf) * bufflen);
+    struct file_handler *fh = curproc->file_table[fd];
+    struct iovec iov;
+    struct uio kuio;
+    
+    lock_acquire(fh->lock);
+    // Initialize a uio structure for reading.
+    uio_kinit(&iov, &kuio, kbuf, bufflen, fh->offset, UIO_READ);
+
+    int err = VOP_READ(fh->vnode, &kuio); // Perform the read operation.
+    if (err) {
+        lock_release(fh->lock);
+        kfree(kbuf);
+        return err;
+    }
+
+    // Calculate the number of bytes read and update the file offset.
+    off_t bytes = kuio.uio_offset - fh->offset;
+    *retval = (int32_t)bytes;
+    fh->offset = kuio.uio_offset;
+
+    // Copy the read data back to user space.
+    if (bytes != 0) {
+        err = copyout(kbuf, (userptr_t)buf, *retval);
+        if (err) {
+            lock_release(fh->lock);
+            kfree(kbuf);
+            return err;
+        }
+    }
+
+    lock_release(fh->lock);
+    kfree(kbuf);
+    return 0;
 }
 
+// Write data from a user buffer to an open file descriptor.
 int sys_write(int fd, const void *buff, size_t bufflen, int32_t *retval) {
-    if (fd < 0 || fd >= OPEN_MAX || !curproc->file_table[fd] || curproc->file_table[fd]->mode == O_RDONLY)
-        return EBADF;
+    if (fd < 0 || fd >= OPEN_MAX || !curproc->file_table[fd] || curproc->file_table[fd]->mode == O_RDONLY) {
+        return EBADF; // Invalid file descriptor or read-only file.
+    }
 
     struct file_handler *fh = curproc->file_table[fd];
-    char *kbuf = (char *)kmalloc(sizeof(*buff)*bufflen);
+    char *kbuf = (char *)kmalloc(sizeof(*buff) * bufflen);
     if (!kbuf) return ENOMEM;
 
+    // Copy the user-provided data into kernel space.
     int err = copyin((const_userptr_t)buff, kbuf, bufflen);
     if (err) {
         kfree(kbuf);
@@ -115,23 +134,29 @@ int sys_write(int fd, const void *buff, size_t bufflen, int32_t *retval) {
     struct iovec iov;
     struct uio kuio;
     lock_acquire(fh->lock);
+    // Initialize a uio structure for writing.
     uio_kinit(&iov, &kuio, kbuf, bufflen, fh->offset, UIO_WRITE);
 
+    // Perform the write operation.
     err = VOP_WRITE(fh->vnode, &kuio);
     if (!err) {
-        *retval = kuio.uio_offset - fh->offset;
-        fh->offset = kuio.uio_offset;
+        *retval = kuio.uio_offset - fh->offset; // Set the number of bytes written.
+        fh->offset = kuio.uio_offset; // Update the file offset.
     }
+
     lock_release(fh->lock);
     kfree(kbuf);
     return err;
 }
 
+// Close an open file descriptor, releasing its resources.
 int sys_close(int fd) {
     if (fd < 0 || fd >= OPEN_MAX || !curproc->file_table[fd]) return EBADF;
 
     struct file_handler *fh = curproc->file_table[fd];
     lock_acquire(fh->lock);
+
+    // Decrease the reference count and close if it reaches zero.
     if (--fh->d_count > 0) {
         lock_release(fh->lock);
     } else {
@@ -216,95 +241,79 @@ int sys_lseek(int fd, off_t offset, int32_t whence, off_t *retval) {
 
     return 0;
 }
-
-
+// Duplicate a file descriptor.
 int sys_dup2(int oldfd, int newfd, int *retval) {
-
-	struct file_handler *temp = NULL;
-	bool newfdflag = false;
-	if(oldfd < 0 || oldfd >= OPEN_MAX || newfd < 0 || newfd >= OPEN_MAX || curproc->file_table[oldfd] == NULL) {
-		return EBADF;		
-	}
-
-	if(oldfd == newfd){
-		*retval = newfd;
-		return 0;
-	}
-
-	if(curproc->file_table[newfd] != NULL){
-		temp = curproc->file_table[newfd];
-		newfdflag = true;
-	}
-	
-	lock_acquire(curproc->file_table[oldfd]->lock);
-	if(curproc->file_table[oldfd]->d_count == 0) {
-		lock_release(curproc->file_table[oldfd]->lock);
-		return EBADF;
-	}
-	curproc->file_table[newfd] = curproc->file_table[oldfd];
-	KASSERT(curproc->file_table[oldfd]->d_count > 0);
-	curproc->file_table[oldfd]->d_count++;
-	lock_release(curproc->file_table[oldfd]->lock);
-
-	if(newfdflag) {
-		lock_acquire(temp->lock);	
-		KASSERT(temp->d_count > 0);
-		temp->d_count--;
-		if(temp->d_count > 0) {
-			lock_release(temp->lock);
-			temp = NULL;
-		} else {
-			lock_release(temp->lock);
-			KASSERT(temp->d_count == 0);
-			lock_destroy(temp->lock);
-        	        vfs_close(temp->vnode);
-        	        kfree(temp);
-			temp = NULL;
-		}
-	}
-	*retval = newfd;
-
-	return 0;
-}
-
-int sys__getcwd(char *buf, size_t buflen, int32_t *retval){
-	char *buffer = (char *)kmalloc(sizeof(*buf)*buflen);
-    struct uio kuio;
-    struct iovec iov;
-    
-    uio_kinit(&iov, &kuio, buffer, buflen, 0, UIO_READ);
-    int err = vfs_getcwd(&kuio);
-    if (err){
-		return err;
-	}
-
-	off_t bytes = kuio.uio_offset ;
-	*retval = (int32_t)bytes;
-	if(bytes != 0){
-		err = copyout(buffer, (userptr_t)buf, *retval);
-		if(err) {
-			kfree(buffer);
-			return err;
-		}
-	}
-	return 0;
-}
-
-int sys_chdir (const char *path) { 
-    size_t len = PATH_MAX;
-	size_t got;
-	char kpath[PATH_MAX]; 
-    int err;
-	int copyinside = copyinstr((const_userptr_t)path, kpath, len, &got);
-	if (copyinside) {
-		return copyinside;
-	}
-    err = vfs_chdir(kpath);
-    if(err) {
-        return err;
+    // Validate file descriptors and ensure oldfd is open.
+    if (oldfd < 0 || oldfd >= OPEN_MAX || newfd < 0 || newfd >= OPEN_MAX ||
+        curproc->file_table[oldfd] == NULL) {
+        return EBADF;
     }
+
+    // If oldfd and newfd are the same, no duplication is needed.
+    if (oldfd == newfd) {
+        *retval = newfd;
+        return 0;
+    }
+
+    // Retrieve the file handlers.
+    struct file_handler *oldfh = curproc->file_table[oldfd];
+    struct file_handler *newfh = curproc->file_table[newfd];
+
+    // If newfd is open, close it first.
+    if (newfh != NULL) {
+        lock_acquire(newfh->lock);
+        newfh->d_count--;
+        if (newfh->d_count == 0) {
+            lock_destroy(newfh->lock);
+            vfs_close(newfh->vnode);
+            kfree(newfh);
+        } else {
+            lock_release(newfh->lock);
+        }
+    }
+
+    // Point newfd to the same file as oldfd.
+    lock_acquire(oldfh->lock);
+    curproc->file_table[newfd] = oldfh;
+    oldfh->d_count++;
+    lock_release(oldfh->lock);
+
+    *retval = newfd; // Return the duplicated file descriptor.
     return 0;
 }
-    
 
+// Get the current working directory.
+int sys__getcwd(char *buf, size_t buflen, int32_t *retval) {
+    char *buffer = (char *)kmalloc(sizeof(*buf) * buflen);
+    struct uio kuio;
+    struct iovec iov;
 
+    // Initialize a uio structure for reading the current working directory.
+    uio_kinit(&iov, &kuio, buffer, buflen, 0, UIO_READ);
+    int err = vfs_getcwd(&kuio);
+    if (err) return err;
+
+    // Get the number of bytes read and copy them to the user space buffer.
+    off_t bytes = kuio.uio_offset;
+    *retval = (int32_t)bytes;
+    if (bytes != 0) {
+        err = copyout(buffer, (userptr_t)buf, *retval);
+        if (err) {
+            kfree(buffer);
+            return err;
+        }
+    }
+    kfree(buffer);
+    return 0;
+}
+
+// Change the current working directory.
+int sys_chdir(const char *path) {
+    char kpath[PATH_MAX];
+    int err = copyinstr((const_userptr_t)path, kpath, PATH_MAX, NULL);
+    if (err) return err;
+
+    // Change the current working directory using vfs_chdir.
+    err = vfs_chdir(kpath);
+    return err;
+}
