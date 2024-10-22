@@ -1,0 +1,117 @@
+1. What are the ELF magic numbers?
+a)  ELF = Executable and Linkable Format
+    ELF magic numbers indentifies ELF files.    
+    They consist of the first four bytes of the file and are usually represented as '0x7f', 'E', 'L', and 'F'.
+
+
+2. What is the difference between UIO_USERISPACE and UIO_USERSPACE? When should one use UIO_SYSSPACE instead?
+a)    UIO_USERISPACE: 
+        For general access to user-space memory, including both code and data.
+        Used when accessing memory that can include both executable code and variables from the user process.
+    UIO_USERSPACE: 
+        For working with user-space data.
+        Used when dealing with data buffers or variables in user-space, rather than the executable code.
+    UIO_SYSSPACE: 
+        Kernel-space memory
+        Not accessible to user-space applications.
+    We should use UIO_SYSSPACE instead when we need to access kernel memory or resources without operations exposed to user-space (due to security and stability reasons).
+
+
+3. Why can the struct uio that is used to read in a segment be allocated on the stack in load_segment() (i.e., where does the memory read actually go)?
+a)  The struct uio only contains a few pointers and integers, thus it can be allocated on the stack without significant overhead.
+    The struct uio that is used to read goes to a buffer--meaning the stack does not hold the actual data--so it can safely be allocated on the stack.
+
+
+4. In runprogram(), why is it important to call vfs_close() before going to usermode?
+a)  If we don't use vfs_close(), file descriptor may remain open and that could exhaust the available file descriptors or cause resource leaks.
+    It is to ensure that the memory resources are properly released and cleaned up, pending changes or buffers are flushed, and prevent potential race conditions as the file might be accessed and modified by other processes.
+
+
+5. What function forces the processor to switch into usermode? Is this function machine dependent?
+a)  asm_usermode which is an assembly method used to force the processor to switch into user mode is called by mips_usermode(). 
+    processor to switch into user mode.
+    Yes, this function is machine dependent as it is in assembly.
+
+
+6. In what file are copyin and copyout defined? memmove? Why can't copyin and copyout be implemented as simply as memmove?
+a)  copyin and copyout are defined in the header file copyinout.h, which is located in kern/include, memmove is defined in
+    the header file string.h, also located inside kern/include.
+    copyin and copyout:
+        Designed for transferring data between user space and kernel space, so additional checks are are needed.
+        Must check whether the addresses provided are valid and whether the kernel has permission to access them.
+        May not be accessible due to memory protection mechanisms.
+    memmove:
+        Used for memory copying within the same address space.
+        Does not need to worry about different privilege levels or memory protections.
+
+
+7. What (briefly) is the purpose of userptr_t?
+a)  userptr_t = pointers referring to user-space memory addresses
+    It is used to enhance code clarity and safety in managing user-space pointers, allowing the kernel to handle user-space pointers without mixing them up with kernel pointers.
+
+
+8. What is the numerical value of the exception code for a MIPS system call?
+a)  Exception code for a MIPS system call --> EX_SYS
+    src/kern/arch/mips/include/trapframe.h 
+    #define EX_SYS    8    /* Syscall */
+    Answer = 8
+
+
+9. How many bytes is an instruction in MIPS? (Answer this by reading syscall() carefully, not by looking somewhere else.)
+a)  src/kern/arch/mips/syscall/syscall.c
+    tf->tf_epc += 4;
+    Answer = 4 bytes
+
+
+10. Why do you "probably want to change" the implementation of kill_curthread()?
+a)  Error handling could be improved by making sure it doesn't crash/terminate the kernel--it must be stable.
+
+
+11. What would be required to implement a system call that took more than 4 arguments?
+a)  Additional arguments must be passed using the user stack.
+    System call handler fetches these arguments using copyin() to safely read from user space into kernel space.
+    Modify syscall() to account for additional arguments by copying them from the user stack.
+    Additional arguments fetched from the user stack should be validated
+        - Checking for valid memory addresses
+        - Ensuring that copyin() completes successfully
+    System call handler should be updated to accept and process the additional arguments passed from the stack.
+
+
+12. What is the purpose of the SYSCALL macro?
+a)  Ensures consistent and clean handling of the transition from user space to kernel space when a system call is invoked.
+    Defines system call entry points in a centralized way for easier system call management.
+    Ensures consistency in how system calls are defined and handled across the system.
+    Manages the transfer of arguments from the user registers to the system call handler, ensuring that they are passed properly to the kernel from user space.
+    Ensures errors are properly returned to the calling user process.
+
+
+13. What is the MIPS instruction that actually triggers a system call? (Answer this by reading the source in userland/lib/libc/arch/mips, not looking somewhere else.)
+userland/lib/libc/arch/mips
+a)  syscall              /* make system call */
+
+
+14. After reading syscalls-mips.S and syscall.c, you should be prepared to answer the following question: 
+OS/161 supports 64-bit values; lseek() takes and returns a 64-bit offset value. 
+Thus, lseek() takes a 32-bit file handle (arg0), a 64-bit offset (arg1), a 32-bit whence (arg2), and needs to return a 64-bit offset value. 
+In void syscall(struct trapframe *tf) where will you find each of the three arguments (in which registers) and how will you return the 64-bit offset?
+a)  arg0 = tf_a0 has the first 32 bit argument
+    arg1 = higher 32 bits is in tf_a2 , and lower 32 bits is in tf_a3
+    arg2 = tf_sp has the stack pointer to which we add 16 (tf_sp + 16) to get the third argument from the usermode
+    Value is passed back in tf_v0 (higher 32 bits) and tf_v1 (lower 32 bits).
+
+
+15. As you were reading the code in runprogram.c and loadelf.c, you probably noticed how the kernel manipulates the files. 
+a)  Which kernel function is called to open a file? 
+        vfs_open()
+    Which macro is called to read the file? 
+        VOP_READ()
+    What about to write a file? 
+        VOP_WRITE()
+    Which data structure is used in the kernel to represent an open file? 
+        file_handler is used by the kernel to represent an open file ,  we implemented this struct for this assignment.
+
+
+16. What is the purpose of VOP_INCREF and VOP_DECREF?
+a)  VOP_INCREF = When vnode is opened/needed by another component, reference count is increased to indicate that there is an active user of that vnode.
+    VOP_DECREF = When a vnode is no longer needed, the reference count is decreased.
+    This helps the kernel manage resources efficiently.
