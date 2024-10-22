@@ -207,6 +207,7 @@ try_seeking(int fd, off_t pos, off_t cursize)
 
 	/* Go back to the exact place. */
 	dolseek(fd, pos, SEEK_SET, "SEEK_SET", pos);
+
 }
 
 int

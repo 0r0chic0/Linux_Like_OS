@@ -15,6 +15,8 @@
 #include <stat.h>
 #include <lib.h>
 #include <file_handler.h>
+#include <filesyscalls.h>
+
 
 int sys_open(const char *filename, int flags, int32_t *retval) {
     char cin_filename[PATH_MAX];
@@ -25,7 +27,7 @@ int sys_open(const char *filename, int flags, int32_t *retval) {
     while (i < OPEN_MAX && curproc->file_table[i] != NULL) i++;
     if (i == OPEN_MAX) return EMFILE;
 
-    struct file_handler *fh = kmalloc(sizeof(*fh));
+    struct file_handler *fh = (struct file_handler *)kmalloc(sizeof(struct file_handler));
     if (!fh) return ENOMEM;
 
     err = vfs_open(cin_filename, flags, 0, &fh->vnode);
@@ -63,29 +65,37 @@ int sys_open(const char *filename, int flags, int32_t *retval) {
     return 0;
 }
 
-
-int sys_read(int fd, void *buf, size_t bufflen, int32_t *retval) {
-    if (fd < 0 || fd >= OPEN_MAX || !curproc->file_table[fd] || curproc->file_table[fd]->mode == O_WRONLY)
-        return EBADF;
-
+int sys_read(int fd, void *buf, size_t bufflen, int32_t *retval){
+    if(fd < 0 || fd >= OPEN_MAX || curproc->file_table[fd] == NULL || curproc->file_table[fd]->mode == O_WRONLY) {
+		return EBADF;		
+	}
+	char *kbuf = (char *)kmalloc(sizeof(*buf)*bufflen);
     struct file_handler *fh = curproc->file_table[fd];
-    char *kbuf = kmalloc(bufflen);
-    if (!kbuf) return ENOMEM;
+	struct iovec iov;
+	struct uio kuio;
+	lock_acquire(fh->lock);	
+	uio_kinit(&iov, &kuio, kbuf, bufflen, fh->offset, UIO_READ);
 
-    struct iovec iov;
-    struct uio kuio;
-    lock_acquire(fh->lock);
-    uio_kinit(&iov, &kuio, kbuf, bufflen, fh->offset, UIO_READ);
-
-    int err = VOP_READ(fh->vnode, &kuio);
-    if (!err) {
-        *retval = kuio.uio_offset - fh->offset;
-        fh->offset = kuio.uio_offset;
-        err = copyout(kbuf, buf, *retval);
-    }
-    lock_release(fh->lock);
-    kfree(kbuf);
-    return err;
+	int err = VOP_READ(fh->vnode, &kuio);
+	if (err){
+		lock_release(fh->lock);
+		kfree(kbuf);
+		return err;
+	}
+	off_t bytes = kuio.uio_offset - fh->offset;
+	*retval = (int32_t)bytes;
+	fh->offset = kuio.uio_offset;
+	if(bytes != 0){
+		err = copyout(kbuf, (userptr_t)buf, *retval);
+		if(err) {
+			lock_release(fh->lock);
+			kfree(kbuf);
+			return err;
+		}
+	}
+	lock_release(fh->lock);
+	kfree(kbuf);
+	return 0;
 }
 
 int sys_write(int fd, const void *buff, size_t bufflen, int32_t *retval) {
@@ -93,7 +103,7 @@ int sys_write(int fd, const void *buff, size_t bufflen, int32_t *retval) {
         return EBADF;
 
     struct file_handler *fh = curproc->file_table[fd];
-    char *kbuf = kmalloc(bufflen);
+    char *kbuf = (char *)kmalloc(sizeof(*buff)*bufflen);
     if (!kbuf) return ENOMEM;
 
     int err = copyin((const_userptr_t)buff, kbuf, bufflen);

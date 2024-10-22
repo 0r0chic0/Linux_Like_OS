@@ -15,6 +15,7 @@ $(MYBUILDDIR)/pass1.ho: \
  compat.h \
  ../mksfs/support.h \
  $(INSTALLTOP)/hostinclude/hostcompat.h \
+ $(INSTALLTOP)/hostinclude/kern/sfs.h \
  ../mksfs/disk.h \
  utils.h \
  ibmacros.h \
@@ -29,6 +30,7 @@ $(MYBUILDDIR)/pass2.ho: \
  compat.h \
  ../mksfs/support.h \
  $(INSTALLTOP)/hostinclude/hostcompat.h \
+ $(INSTALLTOP)/hostinclude/kern/sfs.h \
  ../mksfs/disk.h \
  utils.h \
  ibmacros.h \
@@ -43,6 +45,7 @@ $(MYBUILDDIR)/inode.ho: \
  compat.h \
  ../mksfs/support.h \
  $(INSTALLTOP)/hostinclude/hostcompat.h \
+ $(INSTALLTOP)/hostinclude/kern/sfs.h \
  utils.h \
  sfs.h \
  freemap.h \
@@ -53,6 +56,7 @@ $(MYBUILDDIR)/freemap.ho: \
  compat.h \
  ../mksfs/support.h \
  $(INSTALLTOP)/hostinclude/hostcompat.h \
+ $(INSTALLTOP)/hostinclude/kern/sfs.h \
  utils.h \
  sfs.h \
  sb.h \
@@ -63,6 +67,7 @@ $(MYBUILDDIR)/sb.ho: \
  compat.h \
  ../mksfs/support.h \
  $(INSTALLTOP)/hostinclude/hostcompat.h \
+ $(INSTALLTOP)/hostinclude/kern/sfs.h \
  utils.h \
  sfs.h \
  sb.h \
@@ -73,6 +78,7 @@ $(MYBUILDDIR)/sfs.ho: \
  compat.h \
  ../mksfs/support.h \
  $(INSTALLTOP)/hostinclude/hostcompat.h \
+ $(INSTALLTOP)/hostinclude/kern/sfs.h \
  ../mksfs/disk.h \
  utils.h \
  ibmacros.h \

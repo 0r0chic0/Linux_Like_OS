@@ -14,4 +14,4 @@ file_syscalls.o: ../../syscall/file_syscalls.c ../../include/types.h \
  ../../include/kern/unistd.h ../../include/endian.h \
  ../../include/kern/endian.h includelinks/kern/machine/endian.h \
  ../../include/stat.h ../../include/kern/stat.h \
- ../../include/kern/stattypes.h
+ ../../include/kern/stattypes.h ../../include/filesyscalls.h

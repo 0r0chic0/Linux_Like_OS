@@ -37,6 +37,7 @@
 #include <syscall.h>
 #include <file_handler.h>
 #include <copyinout.h>
+#include <filesyscalls.h>
 
 
 /*
