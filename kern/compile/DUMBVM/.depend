@@ -401,7 +401,8 @@ proc.o: ../../proc/proc.c ../../include/types.h \
  includelinks/kern/machine/setjmp.h ../../include/current.h \
  includelinks/machine/current.h ../../include/addrspace.h \
  ../../include/vm.h includelinks/machine/vm.h opt-dumbvm.h \
- ../../include/kern/fcntl.h ../../include/vfs.h
+ ../../include/kern/fcntl.h ../../include/vfs.h \
+ ../../include/proc_table.h
 file_syscalls.o: ../../syscall/file_syscalls.c ../../include/types.h \
  ../../include/kern/types.h includelinks/kern/machine/types.h \
  includelinks/machine/types.h ../../include/proc.h ../../include/limits.h \

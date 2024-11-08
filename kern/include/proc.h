@@ -39,6 +39,7 @@
 #include <file_handler.h>
 #include <spinlock.h>
 #include <thread.h> /* required for struct threadarray */
+
 /*
  * Process structure.
  */
@@ -58,6 +59,12 @@ struct proc {
     struct vnode *p_cwd;           /* Current working directory */
 
     struct file_handler *file_table[OPEN_MAX]; /* File table */
+
+    pid_t pid;
+
+    pid_t parent;
+
+    pid_t children[OPEN_MAX];
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -65,6 +72,8 @@ extern struct proc *kproc;
 
 /* Call once during system startup to allocate data structures. */
 void proc_bootstrap(void);
+
+void proc_table_bootstrap(void);
 
 /* Create a fresh process for use by runprogram(). */
 struct proc *proc_create_runprogram(const char *name);

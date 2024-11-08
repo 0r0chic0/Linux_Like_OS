@@ -51,12 +51,13 @@
 #include <synch.h>
 #include <kern/fcntl.h>
 #include <vfs.h>
-
+#include <proc_table.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
  */
 struct proc *kproc;
+struct proc_table *processes;
 
 /*
  * Create a proc structure.
@@ -67,6 +68,8 @@ proc_create(const char *name)
 {
 	struct proc *proc;
 	int i = 0;
+	int j = 0;
+	int k = 0;
 
 	proc = kmalloc(sizeof(*proc));
 	if (proc == NULL) {
@@ -92,7 +95,56 @@ proc_create(const char *name)
 		proc->file_table[i] = NULL;
 	}
 
+	while (j < OPEN_MAX && processes->proc[j] != NULL) {
+		j++;
+	}
+
+	if (j == OPEN_MAX) {
+		kfree(proc->p_name);
+		kfree(proc);
+		return NULL;
+	}
+	
+	processes->proc[j] = proc;
+	proc->pid = (pid_t)j;
+    
+	proc->parent = -1;
+
+	for(k = 0; k < OPEN_MAX ; ++k)
+	{
+		proc->children[k] = -1;
+	}
+
 	return proc;
+}
+
+
+static struct proc_table *
+proc_table_create(){
+	struct proc_table *processes ;
+	int i = 0;
+
+	processes = kmalloc(sizeof(*processes));
+	if (processes == NULL) {
+		panic("Memory allocation for process table failed\n");
+	}
+
+	spinlock_init(&processes->lock);
+
+	for (i=0; i < OPEN_MAX ; ++i){
+		processes-> proc[i] = NULL;
+	}
+
+	return processes;
+
+}
+
+void
+proc_table_bootstrap(void) {
+	processes = proc_table_create();
+	if (processes == NULL) {
+		panic("process table creation failed\n");
+	}
 }
 
 /*
@@ -228,7 +280,6 @@ struct proc *
 proc_create_runprogram(const char *name)
 {
 	struct proc *newproc;
-
 	newproc = proc_create(name);
 	if (newproc == NULL) {
 		return NULL;
