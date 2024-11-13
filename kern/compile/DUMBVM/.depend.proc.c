@@ -10,5 +10,6 @@ proc.o: ../../proc/proc.c ../../include/types.h \
  includelinks/kern/machine/setjmp.h ../../include/current.h \
  includelinks/machine/current.h ../../include/addrspace.h \
  ../../include/vm.h includelinks/machine/vm.h opt-dumbvm.h \
- ../../include/kern/fcntl.h ../../include/vfs.h \
- ../../include/proc_table.h
+ ../../include/kern/fcntl.h ../../include/kern/errno.h \
+ ../../include/vfs.h ../../include/proc_table.h \
+ includelinks/mips/trapframe.h ../../include/wchan.h

@@ -38,6 +38,9 @@
 #include <file_handler.h>
 #include <copyinout.h>
 #include <filesyscalls.h>
+#include <proc_table.h>
+#include <addrspace.h>
+#include <kern/wait.h>
 
 
 /*
@@ -163,6 +166,28 @@ syscall(struct trapframe *tf)
             err = sys_chdir((const char *)tf->tf_a0);
             break;
 
+        case SYS_fork:
+            err = sys_fork(tf, &retval);
+            break;
+
+        case SYS_getpid:
+            err = sys_getpid(&retval);
+            break;
+
+        case SYS_execv:
+            err = sys_execv((const char *)tf->tf_a0, (char **)tf->tf_a1);
+            break;
+        
+        case SYS_waitpid:
+            err = sys_waitpid((pid_t)tf->tf_a0, (int32_t *) tf->tf_a1, (int32_t) tf->tf_a2);
+            break;
+        
+        case SYS__exit: ;
+		int waitcode = (int) _MKWAIT_EXIT(tf->tf_a0);
+		sys__exit(waitcode);
+		panic("The exit syscall should never return");
+		break;
+
         default:
             kprintf("Unknown syscall %d\n", callno);
             err = ENOSYS;
@@ -174,7 +199,8 @@ syscall(struct trapframe *tf)
         // Return the error code.
         tf->tf_v0 = err;
         tf->tf_a3 = 1; // Signal an error.
-    } else if (callno != SYS_lseek) {
+    }
+    else if (callno != SYS_lseek) {
         // Success, not lseek, return simple retval.
         tf->tf_v0 = retval;
         tf->tf_a3 = 0; // Signal no error.
@@ -190,18 +216,4 @@ syscall(struct trapframe *tf)
     KASSERT(curthread->t_curspl == 0);
     // ...or leak any spinlocks.
     KASSERT(curthread->t_iplhigh_count == 0);
-}
-
-/*
- * Enter user mode for a newly forked process.
- *
- * This function is provided as a reminder. You need to write
- * both it and the code that calls it.
- *
- * Thus, you can trash it and do things another way if you prefer.
- */
-void
-enter_forked_process(struct trapframe *tf)
-{
-	(void)tf;
 }

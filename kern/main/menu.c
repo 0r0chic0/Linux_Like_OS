@@ -28,6 +28,7 @@
  */
 
 #include <types.h>
+#include <current.h>
 #include <kern/errno.h>
 #include <kern/reboot.h>
 #include <kern/unistd.h>
@@ -44,6 +45,7 @@
 #include "opt-synchprobs.h"
 #include "opt-sfs.h"
 #include "opt-net.h"
+#include <proc_table.h>
 
 /*
  * In-kernel menu and command dispatcher.
@@ -136,13 +138,13 @@ common_prog(int nargs, char **args)
 		proc_destroy(proc);
 		return result;
 	}
-
+	sys_waitpid(proc->pid, NULL, 0);
 	/*
 	 * The new process will be destroyed when the program exits...
 	 * once you write the code for handling that.
 	 */
-
-	return 0;
+	 
+	 return 0;
 }
 
 /*
@@ -714,6 +716,5 @@ menu(char *args)
 		kprintf("OS/161 kernel [? for menu]: ");
 		kgets(buf, sizeof(buf));
 		menu_execute(buf, 0);
-		while(1) {}
 	}
 }

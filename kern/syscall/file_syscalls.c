@@ -77,20 +77,20 @@ int sys_read(int fd, void *buf, size_t bufflen, int32_t *retval) {
         return EBADF; // Invalid file descriptor or write-only file.
     }
 
-    // Allocate a kernel buffer to store the read data.
-    char *kbuf = (char *)kmalloc(sizeof(*buf) * bufflen);
     struct file_handler *fh = curproc->file_table[fd];
     struct iovec iov;
     struct uio kuio;
     
     lock_acquire(fh->lock);
     // Initialize a uio structure for reading.
-    uio_kinit(&iov, &kuio, kbuf, bufflen, fh->offset, UIO_READ);
+    uio_kinit(&iov, &kuio, buf, bufflen, fh->offset, UIO_READ);
+    kuio.uio_segflg = UIO_USERSPACE;
+    kuio.uio_space = curproc->p_addrspace;
+    iov.iov_ubase = (userptr_t)buf;
 
     int err = VOP_READ(fh->vnode, &kuio); // Perform the read operation.
     if (err) {
         lock_release(fh->lock);
-        kfree(kbuf);
         return err;
     }
 
@@ -99,53 +99,34 @@ int sys_read(int fd, void *buf, size_t bufflen, int32_t *retval) {
     *retval = (int32_t)bytes;
     fh->offset = kuio.uio_offset;
 
-    // Copy the read data back to user space.
-    if (bytes != 0) {
-        err = copyout(kbuf, (userptr_t)buf, *retval);
-        if (err) {
-            lock_release(fh->lock);
-            kfree(kbuf);
-            return err;
-        }
-    }
-
     lock_release(fh->lock);
-    kfree(kbuf);
     return 0;
 }
 
 // Write data from a user buffer to an open file descriptor.
 int sys_write(int fd, const void *buff, size_t bufflen, int32_t *retval) {
-    if (fd < 0 || fd >= OPEN_MAX || !curproc->file_table[fd] || curproc->file_table[fd]->mode == O_RDONLY) {
+    if (fd < 0 || fd >= OPEN_MAX || !curproc->file_table[fd]|| curproc->file_table[fd]->mode == O_RDONLY) {
         return EBADF; // Invalid file descriptor or read-only file.
     }
 
     struct file_handler *fh = curproc->file_table[fd];
-    char *kbuf = (char *)kmalloc(sizeof(*buff) * bufflen);
-    if (!kbuf) return ENOMEM;
-
-    // Copy the user-provided data into kernel space.
-    int err = copyin((const_userptr_t)buff, kbuf, bufflen);
-    if (err) {
-        kfree(kbuf);
-        return err;
-    }
-
     struct iovec iov;
     struct uio kuio;
     lock_acquire(fh->lock);
     // Initialize a uio structure for writing.
-    uio_kinit(&iov, &kuio, kbuf, bufflen, fh->offset, UIO_WRITE);
+    uio_kinit(&iov, &kuio, (char *)buff, bufflen, fh->offset, UIO_WRITE);
+     kuio.uio_segflg = UIO_USERSPACE;
+    kuio.uio_space = curproc->p_addrspace;
+    iov.iov_ubase = (userptr_t)buff;
 
     // Perform the write operation.
-    err = VOP_WRITE(fh->vnode, &kuio);
+    int err = VOP_WRITE(fh->vnode, &kuio);
     if (!err) {
         *retval = kuio.uio_offset - fh->offset; // Set the number of bytes written.
         fh->offset = kuio.uio_offset; // Update the file offset.
     }
 
     lock_release(fh->lock);
-    kfree(kbuf);
     return err;
 }
 

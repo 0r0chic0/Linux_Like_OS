@@ -48,6 +48,7 @@
 #include <device.h>
 #include <syscall.h>
 #include <test.h>
+#include <proc_table.h>
 #include <version.h>
 #include "autoconf.h"  // for pseudoconfig
 
@@ -107,7 +108,6 @@ boot(void)
 
 	/* Early initialization. */
 	ram_bootstrap();
-	proc_table_bootstrap();
 	proc_bootstrap();
 	thread_bootstrap();
 	hardclock_bootstrap();
@@ -128,6 +128,7 @@ boot(void)
 	vm_bootstrap();
 	kprintf_bootstrap();
 	thread_start_cpus();
+	proc_table_bootstrap();
 
 	/* Default bootfs - but ignore failure, in case emu0 doesn't exist */
 	vfs_setbootfs("emu0");

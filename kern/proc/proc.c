@@ -50,8 +50,10 @@
 #include <vnode.h>
 #include <synch.h>
 #include <kern/fcntl.h>
+#include <kern/errno.h>
 #include <vfs.h>
 #include <proc_table.h>
+#include <wchan.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -68,8 +70,6 @@ proc_create(const char *name)
 {
 	struct proc *proc;
 	int i = 0;
-	int j = 0;
-	int k = 0;
 
 	proc = kmalloc(sizeof(*proc));
 	if (proc == NULL) {
@@ -77,6 +77,18 @@ proc_create(const char *name)
 	}
 	proc->p_name = kstrdup(name);
 	if (proc->p_name == NULL) {
+		kfree(proc);
+		return NULL;
+	}
+
+	for(i=0 ; i < OPEN_MAX ; ++i)
+	{
+		proc->file_table[i] = NULL;
+	}
+
+	proc->children = array_create();
+	if (proc->children == NULL) {
+		kfree(proc->p_name);
 		kfree(proc);
 		return NULL;
 	}
@@ -90,61 +102,80 @@ proc_create(const char *name)
 	/* VFS fields */
 	proc->p_cwd = NULL;
 
-	for(i=0 ; i < OPEN_MAX ; ++i)
-	{
-		proc->file_table[i] = NULL;
-	}
-
-	while (j < OPEN_MAX && processes->proc[j] != NULL) {
-		j++;
-	}
-
-	if (j == OPEN_MAX) {
-		kfree(proc->p_name);
-		kfree(proc);
-		return NULL;
-	}
+	proc->pid = 1;
 	
-	processes->proc[j] = proc;
-	proc->pid = (pid_t)j;
-    
-	proc->parent = -1;
-
-	for(k = 0; k < OPEN_MAX ; ++k)
-	{
-		proc->children[k] = -1;
-	}
-
 	return proc;
 }
 
+void
+clear_pid(pid_t pid)
+{
+	KASSERT(pid >= PID_MIN && pid <= PID_MAX);
 
-static struct proc_table *
-proc_table_create(){
-	struct proc_table *processes ;
-	int i = 0;
-
-	processes = kmalloc(sizeof(*processes));
-	if (processes == NULL) {
-		panic("Memory allocation for process table failed\n");
-	}
-
-	spinlock_init(&processes->lock);
-
-	for (i=0; i < OPEN_MAX ; ++i){
-		processes-> proc[i] = NULL;
-	}
-
-	return processes;
-
+	processes->pid_available++;
+	processes->proc[pid] = NULL;
+	processes->status[pid] = READY;
+	processes->waitcode[pid] = (int) NULL;
 }
 
+/* Adds a given process to the proc_table at the given index */
+static
 void
-proc_table_bootstrap(void) {
-	processes = proc_table_create();
-	if (processes == NULL) {
-		panic("process table creation failed\n");
+add_pid(pid_t pid, struct proc *proc)
+{
+	KASSERT(proc != NULL);
+
+	processes->proc[pid] = proc;
+	processes->status[pid] = RUNNING;
+	processes->waitcode[pid] = (int) NULL;
+	processes->pid_available--;
+}
+
+int
+proc_create_fork(const char *name, struct proc **new_proc)
+{
+	int ret;
+	struct proc *proc;
+	struct proc *c = curproc;
+	(void)c;
+	int i;
+
+	proc = proc_create(name);
+	if (proc == NULL) {
+		return ENOMEM;
 	}
+
+	ret = proc_table_add(proc, &proc->pid);
+	if (ret){
+		proc_destroy(proc);
+		return ret;
+	}
+
+	ret = as_copy(curproc->p_addrspace, &proc->p_addrspace);
+	if (ret) {
+		proc_destroy(proc);
+		return ret;
+	}
+
+	spinlock_acquire(&curproc->p_lock);
+	if (curproc->p_cwd != NULL) {
+		VOP_INCREF(curproc->p_cwd);
+		proc->p_cwd = curproc->p_cwd;
+	}
+	spinlock_release(&curproc->p_lock);
+	
+	spinlock_acquire(&curproc->p_lock);
+	for (i = 0; i < OPEN_MAX; i++) {
+		if (curproc->file_table[i] != NULL) {
+        curproc->file_table[i]->d_count++;
+        proc->file_table[i] = curproc->file_table[i];
+		}
+	}
+	spinlock_release(&curproc->p_lock);
+
+
+	*new_proc = proc;
+	return 0;
 }
 
 /*
@@ -168,7 +199,6 @@ proc_destroy(struct proc *proc)
 	KASSERT(proc != kproc);
 
 	int destroy_counter = -1;
-	int i = 0;
 
 	/*
 	 * We don't take p_lock in here because we must have the only
@@ -182,58 +212,37 @@ proc_destroy(struct proc *proc)
 		proc->p_cwd = NULL;
 	}
 
+	int children_size = array_num(proc->children);
+	for (int i = 0; i < children_size; i++){
+		array_remove(proc->children, 0);
+	}
+
 	/* VM fields */
 	if (proc->p_addrspace) {
-		/*
-		 * If p is the current process, remove it safely from
-		 * p_addrspace before destroying it. This makes sure
-		 * we don't try to activate the address space while
-		 * it's being destroyed.
-		 *
-		 * Also explicitly deactivate, because setting the
-		 * address space to NULL won't necessarily do that.
-		 *
-		 * (When the address space is NULL, it means the
-		 * process is kernel-only; in that case it is normally
-		 * ok if the MMU and MMU- related data structures
-		 * still refer to the address space of the last
-		 * process that had one. Then you save work if that
-		 * process is the next one to run, which isn't
-		 * uncommon. However, here we're going to destroy the
-		 * address space, so we need to make sure that nothing
-		 * in the VM system still refers to it.)
-		 *
-		 * The call to as_deactivate() must come after we
-		 * clear the address space, or a timer interrupt might
-		 * reactivate the old address space again behind our
-		 * back.
-		 *
-		 * If p is not the current process, still remove it
-		 * from p_addrspace before destroying it as a
-		 * precaution. Note that if p is not the current
-		 * process, in order to be here p must either have
-		 * never run (e.g. cleaning up after fork failed) or
-		 * have finished running and exited. It is quite
-		 * incorrect to destroy the proc structure of some
-		 * random other process while it's still running...
-		 */
+
 		struct addrspace *as;
 
-		if (proc == curproc) {
+		/*if (proc == curproc) {
 			as = proc_setas(NULL);
 			as_deactivate();
 		}
 		else {
 			as = proc->p_addrspace;
 			proc->p_addrspace = NULL;
-		}
+		}*/
+		as = proc->p_addrspace;
 		as_destroy(as);
+	}
+
+	int threadarray_size = threadarray_num(&proc->p_threads);
+	for (int i = 0; i < threadarray_size; i++){
+		threadarray_remove(&proc->p_threads, 0);
 	}
 
 	threadarray_cleanup(&proc->p_threads);
 	spinlock_cleanup(&proc->p_lock);
 
-	for(i=0 ; i < OPEN_MAX ; ++i)
+	for(int i=0 ; i < OPEN_MAX ; ++i)
 	{
 		if(proc->file_table[i] != NULL)
 		{
@@ -253,11 +262,71 @@ proc_destroy(struct proc *proc)
 			}
 		}
 	}
-
+    array_destroy(proc->children);
 	kfree(proc->p_name);
 	kfree(proc);
 }
 
+struct proc *
+get_pid(pid_t pid)
+{
+	KASSERT(pid >= PID_MIN && pid <= PID_MAX);
+
+	struct proc *proc;
+	bool acquired = lock_do_i_hold(processes->lock);
+
+	if (!acquired) {
+		lock_acquire(processes->lock);
+	}
+
+	proc = processes->proc[pid];
+
+	if (!acquired) {
+		lock_release(processes->lock);
+	}
+
+	return proc;
+}
+
+/* Removes a given PID from the proc_table. Used for failed forks. */
+void
+proc_table_freepid(pid_t pid)
+{
+	KASSERT(pid >= PID_MIN && pid <= PID_MAX);
+
+	lock_acquire(processes->lock);
+	clear_pid(pid);
+	lock_release(processes->lock);
+}
+
+void
+proc_table_bootstrap(void) {
+/* Set up the proc_tables */
+	processes = kmalloc(sizeof(struct proc_table));
+	if (processes == NULL) {
+		panic("Unable to initialize PID table.\n");
+	}
+
+	processes->lock = lock_create("locK");
+	if (processes->lock == NULL) {
+		panic("Unable to intialize PID table's lock.\n");
+	}
+
+	processes->cv = cv_create("pidtable cv");
+	if (processes->cv == NULL) {
+		panic("Unable to intialize PID table's cv.\n");
+	}
+
+	/* Set the kernel thread parameters */
+	processes->pid_available = 1; /* One space for the kernel process */
+	processes->pid_next = PID_MIN;
+	add_pid(kproc->pid, kproc);
+
+	/* Create space for more pids within the table */
+	for (int i = PID_MIN; i < PID_MAX; i++){
+		clear_pid(i);
+	}
+}
 /*
  * Create the process structure for the kernel.
  */
@@ -269,7 +338,6 @@ proc_bootstrap(void)
 		panic("proc_create for kproc failed\n");
 	}
 }
-
 /*
  * Create a fresh proc for use by runprogram.
  *
@@ -302,6 +370,12 @@ proc_create_runprogram(const char *name)
 		newproc->p_cwd = curproc->p_cwd;
 	}
 	spinlock_release(&curproc->p_lock);
+
+	int ret = proc_table_add(newproc, &newproc->pid);
+	if(ret){
+		proc_destroy(newproc);
+		return NULL;
+	}
 
 	 newproc->file_table[0] = initialize_console("con:", O_RDONLY, "STDIN");
     if (newproc->file_table[0] == NULL) {
@@ -482,3 +556,45 @@ proc_setas(struct addrspace *newas)
 	spinlock_release(&proc->p_lock);
 	return oldas;
 }
+
+int
+proc_table_add(struct proc *proc, int32_t *retval)
+{
+	int next;
+	int output = 0;
+
+	KASSERT(proc != NULL);
+
+	lock_acquire(processes->lock);
+
+	if (processes->pid_available < 1){
+		lock_release(processes->lock);
+		return ENPROC;
+	}
+
+	array_add(curproc->children, proc, NULL);
+
+	next = processes->pid_next;
+	*retval = next;
+
+	add_pid(next, proc);
+
+	/* Find the next available PID */
+	if(processes->pid_available > 0){
+		for (int i = next; i < PID_MAX; i++){
+			if (processes->status[i] == READY){
+				processes->pid_next = i;
+				break;
+			}
+		}
+	}
+	/* Put an out-of-bounds value to signify a full table */
+	else{
+		processes->pid_next = PID_MAX + 1;
+	}
+
+	lock_release(processes->lock);
+
+	return output;
+}
+

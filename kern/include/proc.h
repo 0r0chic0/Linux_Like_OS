@@ -62,9 +62,8 @@ struct proc {
 
     pid_t pid;
 
-    pid_t parent;
+    struct array *children; 
 
-    pid_t children[OPEN_MAX];
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -72,8 +71,6 @@ extern struct proc *kproc;
 
 /* Call once during system startup to allocate data structures. */
 void proc_bootstrap(void);
-
-void proc_table_bootstrap(void);
 
 /* Create a fresh process for use by runprogram(). */
 struct proc *proc_create_runprogram(const char *name);
@@ -92,5 +89,7 @@ struct addrspace *proc_getas(void);
 
 /* Change the address space of the current process, and return the old one. */
 struct addrspace *proc_setas(struct addrspace *newas);
+
+void clear_pid(pid_t);
 
 #endif /* _PROC_H_ */
