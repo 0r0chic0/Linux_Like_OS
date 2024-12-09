@@ -409,3 +409,88 @@ sys_execv(const char *prog, char **args)
 	panic("enter_new_process returned\n");
 	return EINVAL;
 }
+
+int sys_sbrk(intptr_t increment, vaddr_t *retval) {
+    struct addrspace *addr_space;
+    long old_heap_end, new_heap_end;
+    int num_pages, err;
+    vaddr_t remove_vaddr;
+    struct page_table_entry *current_pte, *previous_pte;
+
+    addr_space = proc_getas();
+    KASSERT(addr_space != NULL);
+
+    old_heap_end = (long)addr_space->heap_end;
+
+    if (increment == 0) {
+        *retval = addr_space->heap_end;
+        return 0;
+    }
+
+    // Calculate the new heap end
+    new_heap_end = old_heap_end + increment;
+
+    // Validate the new heap end
+    if ((increment > 0 && new_heap_end < old_heap_end) || (increment < 0 && new_heap_end < (long)addr_space->heap_start)) {
+        return (increment > 0) ? ENOMEM : EINVAL;
+    }
+    if (increment > 0 && new_heap_end >= (long)(USERSTACK - VM_STACKPAGES * PAGE_SIZE)) {
+        return ENOMEM;
+    }
+    if (increment % PAGE_SIZE != 0) {
+        return EINVAL;
+    }
+
+    // Calculate the number of pages to add/remove
+    num_pages = increment / PAGE_SIZE;
+    if (num_pages == 0) {
+        *retval = addr_space->heap_end;
+        return 0;
+    }
+
+    if (increment > 0) {
+        addr_space->heap_end = (vaddr_t)new_heap_end;
+    } else {
+        for (int i = 0; i < -num_pages; i++) {
+            remove_vaddr = old_heap_end - (i + 1) * PAGE_SIZE;
+            current_pte = addr_space->start_page_table;
+            previous_pte = NULL;
+
+            while (current_pte != NULL) {
+                if (current_pte->as_vpage == remove_vaddr) {
+                    lock_acquire(current_pte->lock);
+
+                    if (current_pte->state == SWAPPED) {
+                        unmark_swap_bitmap(current_pte->diskpage_location);
+                    } else {
+                        err = release_physical_page(current_pte->as_ppage);
+                        if (err) {
+                            lock_release(current_pte->lock);
+                            continue;
+                        }
+                        tlb_invalidate_entry(remove_vaddr);
+                    }
+
+                    lock_release(current_pte->lock);
+
+                    if (current_pte == addr_space->start_page_table) {
+                        addr_space->start_page_table = current_pte->next;
+                    } else {
+                        previous_pte->next = current_pte->next;
+                    }
+
+                    lock_destroy(current_pte->lock);
+                    kfree(current_pte);
+                    break;
+                }
+
+                previous_pte = current_pte;
+                current_pte = current_pte->next;
+            }
+        }
+        addr_space->heap_end = (vaddr_t)new_heap_end;
+    }
+
+    *retval = (vaddr_t)old_heap_end;
+    return 0;
+}

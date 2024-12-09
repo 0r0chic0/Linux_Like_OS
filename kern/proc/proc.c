@@ -323,7 +323,7 @@ proc_table_bootstrap(void) {
 	add_pid(kproc->pid, kproc);
 
 	/* Create space for more pids within the table */
-	for (int i = PID_MIN; i < PID_MAX; i++){
+	for (int i = PID_MIN; i < 32; i++){
 		clear_pid(i);
 	}
 }

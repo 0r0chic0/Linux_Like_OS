@@ -1,3 +1,4 @@
+
 #ifndef _PROC_TABLE_H_
 #define _PROC_TABLE_H_
 
@@ -12,9 +13,9 @@
 
 
 struct proc_table {
-    struct proc *proc[PID_MAX + 1] ;
-    int status[PID_MAX + 1];
-    int waitcode[PID_MAX + 1];
+    struct proc *proc[32 + 1] ;
+    int status[32 + 1];
+    int waitcode[32 + 1];
     struct lock *lock;   
     struct cv *cv;
     int pid_available;
@@ -28,6 +29,7 @@ int sys_fork(struct trapframe *, int32_t *);
 int sys_waitpid(pid_t, int32_t *, int32_t);
 void sys__exit(int32_t);
 int sys_execv(const char *, char **);
+int sys_sbrk(intptr_t amount, vaddr_t *retval);
 
 /* Creating and entering a new process */
 void enter_usermode(void *, unsigned long);

@@ -1217,14 +1217,9 @@ interprocessor_interrupt(void)
 		 */
 	}
 	if (bits & (1U << IPI_TLBSHOOTDOWN)) {
-		if (curcpu->c_numshootdown == TLBSHOOTDOWN_ALL) {
-			vm_tlbshootdown_all();
-		}
-		else {
-			for (i=0; i<curcpu->c_numshootdown; i++) {
-				vm_tlbshootdown(&curcpu->c_shootdown[i]);
+		for (i=0; i<curcpu->c_numshootdown; i++) {
+			vm_tlbshootdown(&curcpu->c_shootdown[i]);
 			}
-		}
 		curcpu->c_numshootdown = 0;
 	}
 
